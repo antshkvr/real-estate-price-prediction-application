@@ -24,7 +24,7 @@ def decompose_time_series(data, column, target_column):
 
     # Перетворення в часову серію, агреговану за середніми значеннями
     ts = data.set_index(column)[target_column]
-    decomposition = seasonal_decompose(ts, model='additive', period=52)
+    decomposition = seasonal_decompose(ts, model='additive', period=365)
     return decomposition.trend, decomposition.seasonal, decomposition.resid
 
 
@@ -252,7 +252,7 @@ if uploaded_file:
             p = st.sidebar.slider("p (AR order)", 0, 5, 2)
             d = st.sidebar.slider("d (Differencing order)", 0, 2, 1)
             q = st.sidebar.slider("q (MA order)", 0, 5, 2)
-            daterange = pd.date_range(train.index[0], periods=50)
+            daterange = pd.date_range(train.index[0], periods=7)
             model = ARIMA(train[target_col], order=(p, d, q))
             model_fit = model.fit()
             st.write(model_fit.summary())
