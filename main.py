@@ -11,7 +11,6 @@ import xgboost as xgb
 import plotly.express as px
 from sklearn.preprocessing import LabelEncoder
 import matplotlib.pyplot as plt
-import plotly.graph_objects as go
 
 
 # Декомпозиція часу (Trend, Seasonal, Residual)
