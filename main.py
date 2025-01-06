@@ -89,6 +89,52 @@ if uploaded_file:
     st.write("Updated Dataset Preview:")
     st.dataframe(new_data.head())
 
+    # Distribution Chart Builder
+    st.subheader("Distribution Charts")
+    chart_type = st.selectbox("Select chart type", ["Histogram", "Box Plot", "Violin Plot", "KDE Plot"])
+    selected_column = st.selectbox("Select column to visualize", data.columns)
+    
+    # Outlier filtering
+    col1, col2 = st.columns(2)
+    with col1:
+        filter_outliers = st.checkbox("Filter outliers")
+    with col2:
+        if filter_outliers:
+            outlier_method = st.selectbox("Outlier detection method", ["Z-Score", "IQR"])
+            threshold = st.slider("Outlier threshold (%)", 0, 20, 5)
+            
+            filtered_data = data.copy()
+            if outlier_method == "Z-Score":
+                z_scores = np.abs((filtered_data[selected_column] - filtered_data[selected_column].mean()) / filtered_data[selected_column].std())
+                filtered_data = filtered_data[z_scores <= np.percentile(z_scores, 100 - threshold)]
+            elif outlier_method == "IQR":
+                Q1 = filtered_data[selected_column].quantile(threshold / 200)
+                Q3 = filtered_data[selected_column].quantile(1 - threshold / 200)
+                filtered_data = filtered_data[(filtered_data[selected_column] >= Q1) & (filtered_data[selected_column] <= Q3)]
+            else:
+                st.error("Invalid outlier detection method")
+                st.stop()
+            
+            st.write(f"Removed {len(data) - len(filtered_data)} outliers ({(len(data) - len(filtered_data)) / len(data) * 100:.1f}% of data)")
+        else:
+            filtered_data = data
+    
+    if chart_type == "Histogram":
+        bins = st.slider("Number of bins", 5, 100, 30)
+        fig = px.histogram(filtered_data, x=selected_column, nbins=bins, title=f"Histogram of {selected_column}")
+    elif chart_type == "Box Plot":
+        fig = px.box(filtered_data, y=selected_column, title=f"Box Plot of {selected_column}")
+    elif chart_type == "Violin Plot":
+        fig = px.violin(filtered_data, y=selected_column, title=f"Violin Plot of {selected_column}")
+    elif chart_type == "KDE Plot":
+        fig = px.histogram(filtered_data, x=selected_column, title=f"KDE Plot of {selected_column}", 
+                          marginal="kde", nbins=50)
+    else:
+        st.error("Invalid chart type")
+        st.stop()
+    
+    st.plotly_chart(fig)
+
     # Select target variable
     target_col = st.selectbox("Select the target column", data_to_train.columns)
     feature_cols = [col for col in data_to_train.columns if col != target_col]
@@ -215,7 +261,7 @@ if uploaded_file:
             model = SVR(kernel='rbf')
         else:
             st.error("Invalid model selection")
-            return
+            st.stop()
 
         # Train the model
         model.fit(X_train, y_train)
