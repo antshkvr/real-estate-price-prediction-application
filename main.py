@@ -10,6 +10,7 @@ import lightgbm as lgb
 import xgboost as xgb
 import plotly.express as px
 from sklearn.preprocessing import LabelEncoder
+<<<<<<< HEAD
 import matplotlib.pyplot as plt
 
 
@@ -22,6 +23,12 @@ def decompose_time_series(data, column, target_column):
     decomposition = seasonal_decompose(ts, model='additive', period=52)
     return decomposition.trend, decomposition.seasonal, decomposition.resid
 
+=======
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import Ridge, Lasso
+from sklearn.svm import SVR
+from catboost import CatBoostRegressor
+>>>>>>> 3f79db1 (Add a lot of models)
 
 # Application title
 st.title("Real Estate Price Prediction Application")
@@ -187,16 +194,28 @@ if uploaded_file:
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size / 100, random_state=42)
 
     # Model selection
-    model_name = st.selectbox("Select a model", ["LightGBM", "XGBoost", "Random Forest"])
+    model_name = st.selectbox("Select a model", 
+                             ["LightGBM", "XGBoost", "Random Forest", "CatBoost", 
+                              "Ridge Regression", "Lasso Regression", "SVR"])
 
     if st.button("Train Model"):
-
         if model_name == "LightGBM":
             model = lgb.LGBMRegressor(random_state=42)
         elif model_name == "XGBoost":
             model = xgb.XGBRegressor(random_state=42, use_label_encoder=False, eval_metric='rmse')
+        elif model_name == "Random Forest":
+            model = RandomForestRegressor(random_state=42, n_jobs=-1)
+        elif model_name == "CatBoost":
+            model = CatBoostRegressor(random_state=42, verbose=False)
+        elif model_name == "Ridge Regression":
+            model = Ridge(random_state=42)
+        elif model_name == "Lasso Regression":
+            model = Lasso(random_state=42)
+        elif model_name == "SVR":
+            model = SVR(kernel='rbf')
         else:
-            model = RandomForestRegressor(n_estimators=100, random_state=42)
+            st.error("Invalid model selection")
+            return
 
         # Train the model
         model.fit(X_train, y_train)
