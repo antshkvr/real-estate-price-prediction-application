@@ -9,10 +9,14 @@ from sklearn.ensemble import RandomForestRegressor
 import lightgbm as lgb
 import xgboost as xgb
 import plotly.express as px
+import json
+import requests
 from sklearn.preprocessing import LabelEncoder
-<<<<<<< HEAD
 import matplotlib.pyplot as plt
-
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import Ridge, Lasso
+from sklearn.svm import SVR
+from catboost import CatBoostRegressor
 
 # Декомпозиція часу (Trend, Seasonal, Residual)
 def decompose_time_series(data, column, target_column):
@@ -23,12 +27,6 @@ def decompose_time_series(data, column, target_column):
     decomposition = seasonal_decompose(ts, model='additive', period=52)
     return decomposition.trend, decomposition.seasonal, decomposition.resid
 
-=======
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import Ridge, Lasso
-from sklearn.svm import SVR
-from catboost import CatBoostRegressor
->>>>>>> 3f79db1 (Add a lot of models)
 
 # Application title
 st.title("Real Estate Price Prediction Application")
@@ -50,10 +48,21 @@ if uploaded_file:
 
     categorical_columns = data.select_dtypes(include=['object']).columns
     label_encoders = {}
+    
+    # Keep original county names for mapping
+    county_column = None
+    if 'county' in categorical_columns:
+        county_column = data['county'].copy()
+    
     for col in categorical_columns:
         le = LabelEncoder()
         data[col] = le.fit_transform(data[col])
         label_encoders[col] = le
+    
+    # Restore county names for mapping
+    if county_column is not None:
+        data['county_original'] = county_column
+    
     st.write("Dataset Preview:")
     st.dataframe(data)
 
@@ -91,44 +100,104 @@ if uploaded_file:
 
     # Distribution Chart Builder
     st.subheader("Distribution Charts")
-    chart_type = st.selectbox("Select chart type", ["Histogram", "Box Plot", "Violin Plot", "KDE Plot"])
-    selected_column = st.selectbox("Select column to visualize", data.columns)
+    chart_type = st.selectbox("Select chart type", ["Histogram", "Box Plot", "County Map"])
     
-    # Outlier filtering
-    col1, col2 = st.columns(2)
-    with col1:
-        filter_outliers = st.checkbox("Filter outliers")
-    with col2:
-        if filter_outliers:
-            outlier_method = st.selectbox("Outlier detection method", ["Z-Score", "IQR"])
-            threshold = st.slider("Outlier threshold (%)", 0, 20, 5)
-            
-            filtered_data = data.copy()
-            if outlier_method == "Z-Score":
-                z_scores = np.abs((filtered_data[selected_column] - filtered_data[selected_column].mean()) / filtered_data[selected_column].std())
-                filtered_data = filtered_data[z_scores <= np.percentile(z_scores, 100 - threshold)]
-            elif outlier_method == "IQR":
-                Q1 = filtered_data[selected_column].quantile(threshold / 200)
-                Q3 = filtered_data[selected_column].quantile(1 - threshold / 200)
-                filtered_data = filtered_data[(filtered_data[selected_column] >= Q1) & (filtered_data[selected_column] <= Q3)]
+    # Show column selector only for non-map visualizations
+    if chart_type != "County Map":
+        selected_column = st.selectbox("Select column to visualize", data.columns)
+    else:
+        selected_column = st.selectbox("Select value to show on map", 
+                                     [col for col in data.columns if col not in ['county', 'county_original']])
+    
+    # Outlier filtering (only for non-map visualizations)
+    if chart_type != "County Map":
+        col1, col2 = st.columns(2)
+        with col1:
+            filter_outliers = st.checkbox("Filter outliers")
+        with col2:
+            if filter_outliers:
+                outlier_method = st.selectbox("Outlier detection method", ["Z-Score", "IQR"])
+                threshold = st.slider("Outlier threshold (%)", 0, 20, 5)
+                
+                filtered_data = data.copy()
+                if outlier_method == "Z-Score":
+                    z_scores = np.abs((filtered_data[selected_column] - filtered_data[selected_column].mean()) / filtered_data[selected_column].std())
+                    filtered_data = filtered_data[z_scores <= np.percentile(z_scores, 100 - threshold)]
+                elif outlier_method == "IQR":
+                    Q1 = filtered_data[selected_column].quantile(threshold / 200)
+                    Q3 = filtered_data[selected_column].quantile(1 - threshold / 200)
+                    filtered_data = filtered_data[(filtered_data[selected_column] >= Q1) & (filtered_data[selected_column] <= Q3)]
+                
+                st.write(f"Removed {len(data) - len(filtered_data)} outliers ({(len(data) - len(filtered_data)) / len(data) * 100:.1f}% of data)")
             else:
-                st.error("Invalid outlier detection method")
-                st.stop()
-            
-            st.write(f"Removed {len(data) - len(filtered_data)} outliers ({(len(data) - len(filtered_data)) / len(data) * 100:.1f}% of data)")
-        else:
-            filtered_data = data
+                filtered_data = data
+    else:
+        filtered_data = data
     
-    if chart_type == "Histogram":
+    if chart_type == "County Map":
+        if 'county_original' not in data.columns:
+            st.error("No 'county' column found in the dataset")
+            st.stop()
+            
+        # Load Poland GeoJSON (counties)
+        try:
+            geojson_url = "https://raw.githubusercontent.com/ppatrzyk/polska-geojson/refs/heads/master/powiaty/powiaty-min.geojson"
+            response = requests.get(geojson_url)
+            response.raise_for_status()
+            counties_geojson = json.loads(response.text)
+            
+            # Prepare data for the map using original county names
+            county_stats = filtered_data.groupby('county_original')[selected_column].agg(['mean', 'count']).reset_index()
+            county_stats['county'] = county_stats['county_original'].apply(lambda x: f"powiat {x}" if not x.startswith("powiat ") else x)
+            
+            # Create choropleth map
+            fig = px.choropleth_mapbox(
+                county_stats,
+                geojson=counties_geojson,
+                locations='county',
+                featureidkey="properties.nazwa",
+                color='mean',
+                hover_data=['count'],
+                color_continuous_scale="RdYlBu_r",
+                range_color=[county_stats['mean'].min(), county_stats['mean'].max()],
+                mapbox_style="carto-positron",
+                zoom=5,
+                center={"lat": 52.0, "lon": 19.0},
+                opacity=0.7,
+                title=f"Distribution of {selected_column} across Polish Counties<br><sup>Hover for details</sup>"
+            )
+            fig.update_layout(
+                margin={"r":0,"t":30,"l":0,"b":0},
+                height=600,
+                coloraxis_colorbar=dict(
+                    title=dict(text=f"Average {selected_column}"),
+                    len=0.8,
+                )
+            )
+            
+            # Add summary statistics
+            st.write("Summary Statistics:")
+            stats_df = pd.DataFrame({
+                'Metric': ['Minimum', 'Maximum', 'Mean', 'Median', 'Counties with data'],
+                'Value': [
+                    f"{county_stats['mean'].min():.2f}",
+                    f"{county_stats['mean'].max():.2f}",
+                    f"{county_stats['mean'].mean():.2f}",
+                    f"{county_stats['mean'].median():.2f}",
+                    f"{len(county_stats)}"
+                ]
+            })
+            st.dataframe(stats_df)
+            
+        except Exception as e:
+            st.error(f"Error loading map data: {str(e)}")
+            st.stop()
+            
+    elif chart_type == "Histogram":
         bins = st.slider("Number of bins", 5, 100, 30)
         fig = px.histogram(filtered_data, x=selected_column, nbins=bins, title=f"Histogram of {selected_column}")
     elif chart_type == "Box Plot":
         fig = px.box(filtered_data, y=selected_column, title=f"Box Plot of {selected_column}")
-    elif chart_type == "Violin Plot":
-        fig = px.violin(filtered_data, y=selected_column, title=f"Violin Plot of {selected_column}")
-    elif chart_type == "KDE Plot":
-        fig = px.histogram(filtered_data, x=selected_column, title=f"KDE Plot of {selected_column}", 
-                          marginal="kde", nbins=50)
     else:
         st.error("Invalid chart type")
         st.stop()
@@ -231,7 +300,8 @@ if uploaded_file:
         st.write("No suitable columns for time series decomposition.")
     target_col = st.selectbox("Select the target column", data.columns, 
                              index=list(data.columns).index("median_price_pln") if "median_price_pln" in data.columns else 0)
-    feature_cols = [col for col in data.columns if col != target_col]
+    # Exclude county_original from features
+    feature_cols = [col for col in data.columns if col != target_col and col != 'county_original']
     X = data[feature_cols]
     y = data[target_col]
 
@@ -301,7 +371,34 @@ if uploaded_file:
         r2 = r2_score(y_test, predictions)
 
         st.write(f"Model Evaluation for {model_name}:")
-        st.write(f"MAE: {mae}")
-        st.write(f"MSE: {mse}")
-        st.write(f"RMSE: {rmse}")
-        st.write(f"R^2 Score: {r2}")
+        st.write(f"MAE: {mae:.2f}")
+        st.write(f"MSE: {mse:.2f}")
+        st.write(f"RMSE: {rmse:.2f}")
+        st.write(f"R^2 Score: {r2:.2f}")
+
+        # Interactive Scatter Plot
+        st.subheader("True vs Predicted Values")
+        fig = px.scatter(x=y_test, y=predictions, title=f"True vs Predicted Values ({model_name})",
+                         labels={"x": "True Values", "y": "Predicted Values"})
+        st.plotly_chart(fig)
+
+        # Additional Analysis with Plotly
+        st.subheader("Target Variable Distribution")
+        fig = px.histogram(data, x=target_col, title=f"Distribution of {target_col}")
+        st.plotly_chart(fig)
+
+        st.subheader("Boxplot for Target Variable")
+        fig = px.box(data, y=target_col, title=f"Boxplot of {target_col}")
+        st.plotly_chart(fig)
+
+        # Correlation Heatmap (numeric columns only)
+        st.subheader("Correlation Heatmap")
+        numeric_cols = data.select_dtypes(include=['int64', 'float64']).columns
+        fig = px.imshow(data[numeric_cols].corr(), 
+                       text_auto=False, 
+                       title="Correlation Heatmap", 
+                       width=800, 
+                       height=800,
+                       color_continuous_scale="RdBu_r",
+                       aspect="auto")
+        st.plotly_chart(fig)
