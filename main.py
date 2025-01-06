@@ -300,8 +300,10 @@ if uploaded_file:
         st.write("No suitable columns for time series decomposition.")
     target_col = st.selectbox("Select the target column", data.columns, 
                              index=list(data.columns).index("median_price_pln") if "median_price_pln" in data.columns else 0)
-    # Exclude county_original from features
-    feature_cols = [col for col in data.columns if col != target_col and col != 'county_original']
+    # Exclude date and county_original from features
+    feature_cols = [col for col in data.columns if col != target_col 
+                   and col != 'county_original' 
+                   and col != 'date']
     X = data[feature_cols]
     y = data[target_col]
 
@@ -340,15 +342,17 @@ if uploaded_file:
         # Additional Analysis with Plotly
         st.subheader("Target Variable Distribution")
         fig = px.histogram(data_to_train, x=target_col, title=f"Distribution of {target_col}")
-        st.plotly_chart(fig)
+        st.plotly_chart(fig, key="dist_1")
 
         st.subheader("Boxplot for Target Variable")
         fig = px.box(data_to_train, y=target_col, title=f"Boxplot of {target_col}")
-        st.plotly_chart(fig)
+        st.plotly_chart(fig, key="box_1")
 
         st.subheader("Correlation Heatmap")
-        fig = px.imshow(data_to_train.corr(), text_auto=True, title="Correlation Heatmap")
-        st.plotly_chart(fig)
+        numeric_cols = data_to_train.select_dtypes(include=['int64', 'float64']).columns
+        correlation_matrix = data_to_train[numeric_cols].corr()
+        fig = px.imshow(correlation_matrix, text_auto=True, title="Correlation Heatmap")
+        st.plotly_chart(fig, key="corr_1")
 
         # Interactive Scatter Plot
         st.subheader("True vs Predicted Values")
@@ -362,7 +366,7 @@ if uploaded_file:
             y0=min(y_test),
             y1=max(y_test)
         )
-        st.plotly_chart(fig)
+        st.plotly_chart(fig, key="scatter_1")
 
         # Metrics
         mae = mean_absolute_error(y_test, predictions)
@@ -376,29 +380,15 @@ if uploaded_file:
         st.write(f"RMSE: {rmse:.2f}")
         st.write(f"R^2 Score: {r2:.2f}")
 
-        # Interactive Scatter Plot
-        st.subheader("True vs Predicted Values")
-        fig = px.scatter(x=y_test, y=predictions, title=f"True vs Predicted Values ({model_name})",
-                         labels={"x": "True Values", "y": "Predicted Values"})
-        st.plotly_chart(fig)
-
-        # Additional Analysis with Plotly
-        st.subheader("Target Variable Distribution")
-        fig = px.histogram(data, x=target_col, title=f"Distribution of {target_col}")
-        st.plotly_chart(fig)
-
-        st.subheader("Boxplot for Target Variable")
-        fig = px.box(data, y=target_col, title=f"Boxplot of {target_col}")
-        st.plotly_chart(fig)
-
-        # Correlation Heatmap (numeric columns only)
-        st.subheader("Correlation Heatmap")
-        numeric_cols = data.select_dtypes(include=['int64', 'float64']).columns
-        fig = px.imshow(data[numeric_cols].corr(), 
-                       text_auto=False, 
-                       title="Correlation Heatmap", 
-                       width=800, 
-                       height=800,
-                       color_continuous_scale="RdBu_r",
-                       aspect="auto")
-        st.plotly_chart(fig)
+        # Feature Importance Analysis
+        st.subheader("Feature Importance Analysis")
+        if hasattr(model, 'feature_importances_'):
+            importance_df = pd.DataFrame({
+                'Feature': feature_cols,
+                'Importance': model.feature_importances_
+            }).sort_values('Importance', ascending=False)
+            
+            fig = px.bar(importance_df, x='Feature', y='Importance', 
+                        title='Feature Importance',
+                        labels={'Importance': 'Importance Score', 'Feature': 'Feature Name'})
+            st.plotly_chart(fig, key="importance_1")
