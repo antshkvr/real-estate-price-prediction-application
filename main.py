@@ -176,6 +176,11 @@ if uploaded_file:
             st.write(f"No decomposition performed for {feature_col}.")
     else:
         st.write("No suitable columns for time series decomposition.")
+    target_col = st.selectbox("Select the target column", data.columns, 
+                             index=list(data.columns).index("median_price_pln") if "median_price_pln" in data.columns else 0)
+    feature_cols = [col for col in data.columns if col != target_col]
+    X = data[feature_cols]
+    y = data[target_col]
 
     # Train-test split
     test_size = st.slider("Test size (%)", 10, 80, 20, key='2')
