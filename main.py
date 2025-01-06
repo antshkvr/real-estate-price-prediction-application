@@ -58,7 +58,11 @@ if uploaded_file:
         le = LabelEncoder()
         data[col] = le.fit_transform(data[col])
         label_encoders[col] = le
-
+    
+    # Restore county names for mapping
+    if county_column is not None:
+        data['county_original'] = county_column
+    
     st.write("Dataset Preview:")
     st.dataframe(data)
 
@@ -133,14 +137,11 @@ if uploaded_file:
                 filtered_data = data
     else:
         filtered_data = data
-
+    
     if chart_type == "County Map":
         if 'county_original' not in data.columns:
-            # Restore county names for mapping
-            if county_column is not None:
-                data['county_original'] = county_column
-            # st.error("No 'county' column found in the dataset")
-            # st.stop()
+            st.error("No 'county' column found in the dataset")
+            st.stop()
 
         # Load Poland GeoJSON (counties)
         try:
@@ -148,12 +149,10 @@ if uploaded_file:
             response = requests.get(geojson_url)
             response.raise_for_status()
             counties_geojson = json.loads(response.text)
-
+            
             # Prepare data for the map using original county names
-            county_stats = filtered_data.groupby('county_original')[selected_column].agg(
-                ['mean', 'count']).reset_index()
-            county_stats['county'] = county_stats['county_original'].apply(
-                lambda x: f"powiat {x}" if not x.startswith("powiat ") else x)
+            county_stats = filtered_data.groupby('county_original')[selected_column].agg(['mean', 'count']).reset_index()
+            county_stats['county'] = county_stats['county_original'].apply(lambda x: f"powiat {x}" if not x.startswith("powiat ") else x)
 
             # Create choropleth map
             fig = px.choropleth_mapbox(
@@ -193,11 +192,11 @@ if uploaded_file:
                 ]
             })
             st.dataframe(stats_df)
-
+            
         except Exception as e:
             st.error(f"Error loading map data: {str(e)}")
             st.stop()
-
+          
     elif chart_type == "Histogram":
         bins = st.slider("Number of bins", 5, 100, 30)
         fig = px.histogram(filtered_data, x=selected_column, nbins=bins, title=f"Histogram of {selected_column}")
@@ -387,8 +386,8 @@ if uploaded_file:
                 'Feature': feature_cols,
                 'Importance': model.feature_importances_
             }).sort_values('Importance', ascending=False)
-
-            fig = px.bar(importance_df, x='Feature', y='Importance',
-                         title='Feature Importance',
-                         labels={'Importance': 'Importance Score', 'Feature': 'Feature Name'})
+  
+            fig = px.bar(importance_df, x='Feature', y='Importance', 
+                        title='Feature Importance',
+                        labels={'Importance': 'Importance Score', 'Feature': 'Feature Name'})
             st.plotly_chart(fig, key="importance_1")
